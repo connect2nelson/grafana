@@ -63,22 +63,13 @@ func GetAlerts(c *middleware.Context) Response {
 		return ApiError(500, "List alerts failed", err)
 	}
 
-	alertDTOs, resp := transformToDTOs(query.Result, c)
-	if resp != nil {
-		return resp
-	}
-
-	return Json(200, alertDTOs)
-}
-
-func transformToDTOs(alerts []*models.Alert, c *middleware.Context) ([]*dtos.AlertRule, Response) {
-	if len(alerts) == 0 {
-		return []*dtos.AlertRule{}, nil
+	if len(query.Result) == 0 {
+		return Json(200, []*dtos.AlertRule{})
 	}
 
 	dashboardIds := make([]int64, 0)
 	alertDTOs := make([]*dtos.AlertRule, 0)
-	for _, alert := range alerts {
+	for _, alert := range query.Result {
 		dashboardIds = append(dashboardIds, alert.DashboardId)
 		alertDTOs = append(alertDTOs, &dtos.AlertRule{
 			Id:             alert.Id,
@@ -93,6 +84,55 @@ func transformToDTOs(alerts []*models.Alert, c *middleware.Context) ([]*dtos.Ale
 		})
 	}
 
+	alertDTOs, dashboardIds, resp := filterOnUserPermissions(alertDTOs, dashboardIds, c)
+	if resp != nil {
+		return resp
+	}
+
+	alertDTOs, resp = enrichWithDashboardData(alertDTOs, dashboardIds)
+	if resp != nil {
+		return resp
+	}
+
+	return Json(200, alertDTOs)
+}
+
+func filterOnUserPermissions(alerts []*dtos.AlertRule, dashboardIds []int64, c *middleware.Context) ([]*dtos.AlertRule, []int64, Response) {
+	permissionsQuery := models.GetDashboardPermissionsForUserQuery{
+		DashboardIds: dashboardIds,
+		OrgId:        c.OrgId,
+		UserId:       c.SignedInUser.UserId,
+		OrgRole:      c.SignedInUser.OrgRole,
+	}
+
+	if err := bus.Dispatch(&permissionsQuery); err != nil {
+		return nil, nil, ApiError(500, "List alerts failed", err)
+	}
+
+	filtered := make([]*dtos.AlertRule, 0)
+	filteredIds := make([]int64, 0)
+	for _, a := range alerts {
+		perm := matchPermission(permissionsQuery.Result, a.DashboardId)
+		if perm != nil {
+			a.CanEdit = perm.Permission > 1
+			filtered = append(filtered, a)
+			filteredIds = append(filteredIds, a.DashboardId)
+		}
+	}
+	return filtered, filteredIds, nil
+}
+
+func matchPermission(permissions []*models.DashboardPermissionForUser, dashboardId int64) *models.DashboardPermissionForUser {
+	for _, perm := range permissions {
+		if dashboardId == perm.DashboardId {
+			return perm
+		}
+	}
+
+	return nil
+}
+
+func enrichWithDashboardData(alertDTOs []*dtos.AlertRule, dashboardIds []int64) ([]*dtos.AlertRule, Response) {
 	dashboardsQuery := models.GetDashboardsQuery{
 		DashboardIds: dashboardIds,
 	}
@@ -107,25 +147,6 @@ func transformToDTOs(alerts []*models.Alert, c *middleware.Context) ([]*dtos.Ale
 			if alert.DashboardId == dash.Id {
 				alert.DashbboardUri = dash.GenerateUrl()
 				break
-			}
-		}
-	}
-
-	permissionsQuery := models.GetDashboardPermissionsForUserQuery{
-		DashboardIds: dashboardIds,
-		OrgId:        c.OrgId,
-		UserId:       c.SignedInUser.UserId,
-		OrgRole:      c.SignedInUser.OrgRole,
-	}
-
-	if err := bus.Dispatch(&permissionsQuery); err != nil {
-		return nil, ApiError(500, "List alerts failed", err)
-	}
-
-	for _, alert := range alertDTOs {
-		for _, perm := range permissionsQuery.Result {
-			if alert.DashboardId == perm.DashboardId {
-				alert.CanEdit = perm.Permission > 1
 			}
 		}
 	}
