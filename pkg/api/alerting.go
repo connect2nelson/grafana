@@ -26,11 +26,21 @@ func ValidateOrgAlert(c *middleware.Context) {
 	}
 }
 
+// GET /api/alerts/states-for-dashboard
 func GetAlertStatesForDashboard(c *middleware.Context) Response {
 	dashboardId := c.QueryInt64("dashboardId")
 
 	if dashboardId == 0 {
 		return ApiError(400, "Missing query parameter dashboardId", nil)
+	}
+
+	guardian := guardian.NewDashboardGuardian(dashboardId, c.OrgId, c.SignedInUser)
+	if canView, err := guardian.CanView(); err != nil || !canView {
+		if err != nil {
+			return ApiError(500, "Error while checking permissions for Alert", err)
+		}
+
+		return ApiError(403, "Access denied to this dashboard and alert", nil)
 	}
 
 	query := models.GetAlertStatesForDashboardQuery{

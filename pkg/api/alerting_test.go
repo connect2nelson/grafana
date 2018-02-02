@@ -15,13 +15,7 @@ import (
 
 func TestAlertingApiEndpoint(t *testing.T) {
 	Convey("Given an alert in a dashboard with an acl", t, func() {
-
-		singleAlert := &m.Alert{Id: 1, DashboardId: 1, Name: "singlealert"}
-
-		bus.AddHandler("test", func(query *m.GetAlertByIdQuery) error {
-			query.Result = singleAlert
-			return nil
-		})
+		setupSingleAlertHandlers()
 
 		viewerRole := m.ROLE_VIEWER
 		editorRole := m.ROLE_EDITOR
@@ -48,6 +42,14 @@ func TestAlertingApiEndpoint(t *testing.T) {
 					So(sc.resp.Code, ShouldEqual, 403)
 				})
 			})
+			Convey("Should not be able to fetch Alert States", func() {
+				loggedInUserScenarioWithRole("When calling GET on", "GET", "/api/alerts/states-for-dashboard", "/api/alerts/states-for-dashboard", m.ROLE_EDITOR, func(sc *scenarioContext) {
+					sc.handlerFunc = GetAlertStatesForDashboard
+					sc.fakeReqWithParams("GET", sc.url, map[string]string{"dashboardId": "1"}).exec()
+
+					So(sc.resp.Code, ShouldEqual, 403)
+				})
+			})
 		})
 
 		Convey("When user is editor and dashboard has default ACL", func() {
@@ -66,7 +68,23 @@ func TestAlertingApiEndpoint(t *testing.T) {
 					So(sc.resp.Code, ShouldEqual, 200)
 				})
 			})
+
+			Convey("Should be able to fetch Alert States", func() {
+				loggedInUserScenarioWithRole("When calling GET on", "GET", "/api/alerts/states-for-dashboard", "/api/alerts/states-for-dashboard", m.ROLE_EDITOR, func(sc *scenarioContext) {
+					sc.handlerFunc = GetAlertStatesForDashboard
+					sc.fakeReqWithParams("GET", sc.url, map[string]string{"dashboardId": "1"}).exec()
+
+					So(sc.resp.Code, ShouldEqual, 200)
+
+					respJSON, err := simplejson.NewJson(sc.resp.Body.Bytes())
+					So(err, ShouldBeNil)
+					So(len(respJSON.MustArray()), ShouldEqual, 2)
+					So(respJSON.GetIndex(0).Get("state").MustString(), ShouldEqual, string(m.AlertStateOK))
+					So(respJSON.GetIndex(1).Get("state").MustString(), ShouldEqual, string(m.AlertStateAlerting))
+				})
+			})
 		})
+
 	})
 
 	Convey("Given a list of alerts", t, func() {
@@ -132,6 +150,21 @@ func TestAlertingApiEndpoint(t *testing.T) {
 				})
 			})
 		})
+	})
+}
+
+func setupSingleAlertHandlers() {
+	bus.AddHandler("test", func(query *m.GetAlertByIdQuery) error {
+		query.Result = &m.Alert{Id: 1, DashboardId: 1, Name: "singlealert"}
+		return nil
+	})
+
+	bus.AddHandler("test", func(query *m.GetAlertStatesForDashboardQuery) error {
+		query.Result = []*m.AlertStateInfoDTO{
+			{Id: 1, DashboardId: 1, PanelId: 1, State: m.AlertStateOK},
+			{Id: 1, DashboardId: 1, PanelId: 2, State: m.AlertStateAlerting},
+		}
+		return nil
 	})
 }
 
