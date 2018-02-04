@@ -21,7 +21,7 @@ exports[`AlertRuleList should render 1 rule 1`] = `
         className="alert-rule-item__name"
       >
         <a
-          href="d/ufkcofof/my-goal?panelId=3&fullscreen=true&edit=true&tab=alert"
+          href="d/ufkcofof/my-goal?panelId=3&fullscreen&edit&tab=alert"
         >
           <Highlighter
             highlightClassName="highlight-search-match"
@@ -92,7 +92,7 @@ exports[`AlertRuleList should render 1 rule 1`] = `
     </button>
     <a
       className="btn btn-small btn-inverse alert-list__btn width-2"
-      href="d/ufkcofof/my-goal?panelId=3&fullscreen=true&edit=true&tab=alert"
+      href="d/ufkcofof/my-goal?panelId=3&fullscreen&edit&tab=alert"
       title="Edit alert rule"
     >
       <i
